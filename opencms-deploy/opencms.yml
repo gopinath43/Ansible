@@ -1,0 +1,30 @@
+---
+- name: Setup Web Server
+  hosts: web
+  vars:
+    app_node_ip: "{{ groups['app'] | join(',') | trim }}"
+    domain_name: devopstest.com
+  roles:
+    - webserver
+  handlers:
+  - name: restart apache2
+    service: name=apache2 state=restarted
+
+- name: Setup DB
+  hosts: db
+  vars:
+    app_node_ip: "{{ groups['app'] | join(',') | trim }}"
+    mysql_root_password: dev0ps
+  roles:
+    - dbconfig
+  become: true
+
+- name: Setup Tomcat/App Server
+  hosts: app
+  vars:
+    db_node_ip: "{{ groups['db'] | join(',') | trim }}"
+    web_node_ip: "{{ groups['web'] | join(',') | trim }}"
+    mysql_root_password: dev0ps
+  roles:
+    - appconfig
+  become: true

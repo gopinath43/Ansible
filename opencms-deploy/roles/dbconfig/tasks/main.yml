@@ -1,0 +1,67 @@
+- name: Add mysql community repo
+  package: name=https://dev.mysql.com/get/mysql57-community-release-el7-9.noarch.rpm validate_certs=False
+- name: Install MYSQL
+  package:
+    name: mysql-community-server
+    state: present
+- name: Install the Python MySQL Support Libraries
+  package: 
+    name: MySQL-python 
+    state: latest
+#  tags: ['never']
+- name: Install firewalld
+  package:
+    name: firewalld
+    state: present
+- name: Open port 3306 for database access from remote
+  firewalld:
+    port: 3306/tcp
+    permanent: yes
+    state: enabled
+  become: true
+  register: fwstat
+- name: Restart the firewalld service to load in the firewall changes
+  service:
+    name: firewalld
+    state: restarted
+  become: true
+  when: fwstat.changed
+- name: start mysql server and enable it on reboot
+  service: 
+    name: mysqld
+    state: started 
+    enabled: true 
+- name: Disable password complexity requirements
+  lineinfile:
+    path: /etc/my.cnf
+    line: validate-password=off
+- name: Restart mysql 
+  service:
+    name: mysqld
+    state: restarted
+- name: Check root access
+  shell: mysql -u root -p"{{ mysql_root_password }}" -e"quit"
+  register: accstat
+  ignore_errors: yes
+- name: Get default mysql root password
+  shell: grep 'A temporary password' /var/log/mysqld.log |tail -1|awk '{print $NF}'
+  register: defmysqlpass
+  when: accstat.rc != 0
+- name: update mysql root password
+  shell: mysqladmin --user=root --password="{{ defmysqlpass.stdout }}" password "{{ mysql_root_password }}"
+  when: accstat.rc != 0
+- name: update mysql root password for all root accounts
+  mysql_user:
+    name: root
+    host: "{{ item }}"
+    password: "{{ mysql_root_password }}"
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+    check_implicit_admin: yes
+    priv: "*.*:ALL,GRANT"
+  with_items:
+    - "{{ ansible_hostname }}"
+    - 127.0.0.1
+    - ::1
+    - localhost
+    - "{{ app_node_ip }}"
